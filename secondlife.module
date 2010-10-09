@@ -1,0 +1,368 @@
+<?php
+
+// $Id: secondlife.module,v 1.4.2.8 2009/06/12 14:41:41 kbahey Exp $
+
+define('SECONDLIFE_LINDEN_SERVERS',
+'8.2.32.0/22
+63.210.156.0/22
+64.129.40.0/22
+64.129.44.0/22
+64.154.220.0/22
+8.4.128.0/22
+8.10.144.0/21
+216.82.0.0/18');
+
+/**
+ * Implementation of hook_help().
+ */
+function secondlife_help($section) {
+  switch ($section) {
+    case 'admin/help#secondlife':
+      return '<p>' . t('SecondLife integration library') . '</p>';
+  }
+}
+/**
+ * Implementation of hook_menu().
+ */
+function secondlife_menu() {
+  $items['admin/settings/secondlife'] = array(
+    'title'              => t('Second Life'),
+    'description'        => t('Settings for the Second Life Framework module.'),
+    'page callback'      => 'drupal_get_form',
+    'page arguments'     => array('secondlife_settings'),
+    'access arguments'   => array('administer site configuration'),
+    'type'               => MENU_NORMAL_ITEM,
+    );
+
+  $items['secondlife'] = array(
+    'page callback'     => 'secondlife_request',
+    'access callback'   => TRUE,
+    'type'              => MENU_LOCAL_TASK
+    );
+
+  return $items;
+}
+/**
+ * Settings Administration Panel.
+ */
+function secondlife_settings() {
+  $options = array(
+    0 => t('User page'),
+    1 => t('Referrals page'),
+  );
+
+  $form['secondlife_allowed_ips'] = array(
+    '#type'          => 'textarea',
+    '#title'         => t('Allowed Ips'),
+    '#default_value' => variable_get('secondlife_allowed_ips', SECONDLIFE_LINDEN_SERVERS),
+    '#description'   => t('Enter the allowed Ips, one by line.'),
+  );
+
+  $form['secondlife_use_proxy'] = array(
+    '#type'          => 'radios',
+    '#title'         => t('Use proxy'),
+    '#default_value' => variable_get('secondlife_use_proxy', 0),
+    '#options'       => array( 0 => t('No'), 1 => t('Yes') ),
+    '#description'   => t('Select "yes" if your website is behind a proxy.'),
+  );
+
+  $form['secondlife_debug'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Debugging enabled ?'),
+    '#default_value' => variable_get('secondlife_debug', ''),
+    '#description'   => t('Enable debugging output of server/client interactions. Enter the full path name of the file to write the debugging output to, such as /tmp/secondlife.debug. It must be writable to the user who runs your web server. Leave blank for no debugging'),
+  );
+
+  $form['secondlife_timer'] = array(
+    '#type'          => 'radios',
+    '#title'         => t('Enable timing of requests ?'),
+    '#default_value' => variable_get('secondlife_timer', 0),
+    '#options'       => array( 0 => t('Disabled'), 1 => t('Enabled') ),
+    '#description'   => t('Select whether you want to record timing information for how much it takes to process requests from the clients. A "timer=" is send with the response to the client, and if also writting to the debugging output (if enabled).'),
+  );
+
+  $form['secondlife_separators'] = array(
+    '#type'        => 'fieldset',
+    '#title'       => t('Separators'),
+    '#collapsible' => TRUE,
+    '#collapsed'   => TRUE,
+  );
+  $form['secondlife_separators']['secondlife_args_separator'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Arguments separator'),
+    '#size'          => 5,
+    '#default_value' => variable_get('secondlife_args_separator', ':'),
+    '#description'   => t('Enter the separator string for arguments.'),
+  );
+
+  $form['secondlife_fields_names'] = array(
+    '#type'        => 'fieldset',
+    '#title'       => t('Fields Names'),
+    '#collapsible' => TRUE,
+    '#collapsed'   => TRUE,
+  );
+  $form['secondlife_fields_names']['secondlife_app'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('App'),
+    '#default_value' => variable_get('secondlife_app', 'app'),
+  );
+  $form['secondlife_fields_names']['secondlife_cmd'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Cmd'),
+    '#default_value' => variable_get('secondlife_cmd', 'cmd'),
+  );
+  $form['secondlife_fields_names']['secondlife_arg'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Arg'),
+    '#default_value' => variable_get('secondlife_arg', 'arg'),
+  );
+  return system_settings_form($form);
+}
+/**
+ * Main function.
+ */
+function secondlife_request() {
+  // check for server ips
+  $is_ll = FALSE;
+  $ll_subnets = explode("\n", variable_get('secondlife_allowed_ips', SECONDLIFE_LINDEN_SERVERS) );
+  $remote_addr = $_SERVER['REMOTE_ADDR'];
+  if (variable_get('secondlife_use_proxy', 0)) {
+    $tempa = split(", ", $_SERVER['HTTP_X_FORWARDED_FOR']);
+    $remote_addr = trim($tempa[1]);
+  }
+  foreach( $ll_subnets as $network) {
+    if(secondlife_netmatch($network, $remote_addr)) {
+      $is_ll = TRUE;
+      break;
+    }
+  }
+  if ( !$is_ll ) {
+    secondlife_debug("*********************************************************");
+    secondlife_debug(" WRONG IP ");
+    secondlife_debug($_SERVER['REMOTE_ADDR']);
+    secondlife_debug("*********************************************************");
+    secondlife_get_session();
+    return;
+  }
+
+  // Get a timer to compute the answer timing.
+  $timer_enabled = variable_get('secondlife_timer', 0);
+
+  if ($timer_enabled) {
+    timer_start('secondlife_request');
+  }
+
+  $sl = secondlife_get_session();
+
+  // get the arguments separator
+  $args_separator = variable_get('secondlife_args_separator', ':');
+  if (isset($sl->args_separator) && !empty($sl->args_separator)) {
+    $args_separator = $sl->args_separator;
+  }
+  else {
+    $sl->args_separator = $args_separator;
+  }
+
+  $dispatcher = $sl->app . '_dispatch';
+  if ($sl->app && $sl->cmd && function_exists($dispatcher)) {
+    $args = secondlife_parse_args($sl->arg, $args_separator);
+    module_invoke($sl->app, 'dispatch', $sl->cmd, $sl, $args);
+  }
+  else {
+    $sl->response['status'] = FALSE;
+    $sl->response['message'] = "function $func does not exist";
+  }
+
+  if ($timer_enabled) {
+    $sl->response['timer'] = timer_stop('secondlife_request');
+  }
+
+  secondlife_send_response($sl);
+}
+/**
+ * Get the http variables.
+ */
+function secondlife_get_session() {
+  secondlife_debug("=============================");
+  secondlife_debug(format_date(time(), 'custom', 'Y-m-d G:i:s'));
+  secondlife_debug("=============================");
+  foreach($_SERVER as $key => $value) {
+    secondlife_debug("SERVER: $key: $value");
+  }
+
+  foreach($_POST as $key => $value) {
+    secondlife_debug("POST: $key: $value");
+  }
+
+  $sl = new stdClass();
+
+  $sl->objectkey    = $_SERVER['HTTP_X_SECONDLIFE_OBJECT_KEY'];
+  $sl->objectname   = $_SERVER['HTTP_X_SECONDLIFE_OBJECT_NAME'];
+  $sl->ownerkey     = $_SERVER['HTTP_X_SECONDLIFE_OWNER_KEY'];
+  $sl->ownername    = $_SERVER['HTTP_X_SECONDLIFE_OWNER_NAME'];
+  $sl->region       = $_SERVER['HTTP_X_SECONDLIFE_REGION'];
+  $sl->position     = $_SERVER['HTTP_X_SECONDLIFE_LOCAL_POSITION'];
+  $sl->app          = $_POST[variable_get('secondlife_app', 'app')];
+  $sl->cmd          = $_POST[variable_get('secondlife_cmd', 'cmd')];
+  $sl->arg          = $_POST[variable_get('secondlife_arg', 'arg')];
+  $sl->output_type  = $_POST['output_type'];
+  $sl->args_separator = $_POST['args_separator'];
+  
+  preg_match_all('/(.*) \((\d+), (\d+)\)/', $sl->region, $temp);
+  $sl->region_name = $temp[1][0];
+  $sl->region_x    = $temp[2][0];
+  $sl->region_y    = $temp[3][0];
+
+  preg_match_all('/\((.*), (.*), (.*)\)/', $sl->position, $temp);
+  $sl->position_x  = $temp[1][0];
+  $sl->position_y  = $temp[2][0];
+  $sl->position_z  = $temp[3][0];
+
+  secondlife_debug("SL: " . print_r($sl, TRUE) . "\n", FILE_APPEND);
+
+  return $sl;
+}
+/**
+ * Parse the POST arguments.
+ */
+function secondlife_parse_args($arg, $args_separator) {
+  $args = array();
+  foreach(explode($args_separator, $arg) as $pair) {
+    list($key, $value) = explode('=', $pair);
+    $args[$key] = $value;
+    secondlife_debug("ARGS: $key=$value");
+  }
+
+  return $args;
+}
+/**
+ * Returns the value to SecondLife.
+ */
+function secondlife_send_response(&$sl) {
+  $sl->response['app'] = $sl->app;
+  $sl->response['cmd'] = $sl->cmd;
+
+  foreach($sl->response as $key => $value) {
+    secondlife_debug("RESPONSE: $key = $value");
+  }
+
+  switch($sl->output_type) {
+    default:
+    case 'full':
+      foreach($sl->response as $key => $value) {
+        print "$key=$value:";
+      }
+      print "\n";
+      break;
+    case 'message':
+      print strip_tags($sl->response['message']);
+      break;
+  }
+      
+}
+/**
+ * Write the debug infos to the debug file.
+ */
+function secondlife_debug($string) {
+  $debug = variable_get('secondlife_debug', '');
+  if ($debug) {
+    file_put_contents($debug, "$string\n", FILE_APPEND);
+  }
+}
+
+/**
+ * Check the ip.
+ * Authors: Falados Kapuskas, JoeTheCatboy Freelunch
+ */
+function secondlife_netmatch($network, $ip) {
+  // determines if a network in the form of 192.168.17.1/16 or
+  // 127.0.0.1/255.255.255.255 or 10.0.0.1 matches a given ip
+  $ip_arr = explode('/', $network);
+  $network_long = ip2long($ip_arr[0]);
+
+  $x = ip2long($ip_arr[1]);
+  $mask =  long2ip($x) == $ip_arr[1] ? $x : 0xffffffff << (32 - $ip_arr[1]);
+  $ip_long = ip2long($ip);
+
+  return ($ip_long & $mask) == ($network_long & $mask);
+}
+
+/**
+ * XML-RPC Helpers
+ */
+function secondlife_get_data_between($src, $left, $right) {
+  // function to return the data between two tokens (VERY USEFUL)
+  $ids = stripos($src,$left) + strlen($left);
+  if($ids === false) return false;
+  $ide = stripos($src,$right,$ids);
+  if($ide === false) return false;
+  return(substr($src,$ids,$ide - $ids));
+}
+function secondlife_rpc ($channel, $intVal, $stringVal, $host='xmlrpc.secondlife.com', $host_path='/cgi-bin/xmlrpc.cgi', $host_port=80) {
+  // function to emulate xml-rpc for SL remote data connections
+  // encapsulate request data in xml
+  $xml = "<?xml version=\"1.0\"?>
+  <methodCall><methodName>llRemoteData</methodName><params><param><value><struct><member><name>Channel</name>
+  <value><string>{$channel}</string></value></member><member><name>IntValue</name>
+  <value><int>{$intVal}</int></value></member><member><name>StringValue</name>
+  <value><string>{$stringVal}</string></value></member>
+  </struct></value></param></params></methodCall>";
+
+  // open connection to xmlrpc server
+  $socket = fsockopen($host, $host_port);
+  // send HTTP header
+  fputs($socket, "POST ". $host_path. " HTTP/1.1\r\n");
+  fputs($socket, "Host: ". $host. "\r\n");
+  fputs($socket, "Content-type: text/xml\r\n");
+  fputs($socket, "Content-length: ".strlen($xml)."\r\n");
+  fputs($socket, "Connection: close\r\n\r\n");
+
+  // send xml data
+  fputs($socket, $xml);
+
+  // read response from rpc server
+  while(!feof($socket)) $response .= fgets($socket);
+
+  // close the connection
+  fclose($socket);
+
+  // parse out the returned data
+  $sVal = secondlife_get_data_between($response, 'StringValue</name><value><string>','</string>');
+  $iVal = secondlife_get_data_between($response, '<value><int>','</int></value>');
+
+  // return the response data in an array
+  return array('channel' => $channel, 'string' => $sVal, 'integer' => $iVal);
+}
+/**
+* Get the linden user profile
+*/
+function secondlife_get_linden_user_profile($user_key) {
+  $fp = fsockopen("world.secondlife.com", 80, $errno, $errstr, 30);
+  if (!$fp) {
+    $result = "$errstr ($errno)<br />\n";
+  }
+  else {
+    $out = "GET /resident/".$user_key." HTTP/1.1\r\n";
+    $out .= "Host: world.secondlife.com\r\n";
+    $out .= "Connection: Close\r\n\r\n";
+    fwrite($fp, $out);
+    $result = '';
+    while (!feof($fp)) {
+      $result .= fgets($fp, 128);
+    }
+    fclose($fp);
+  }
+  return $result;
+}
+/**
+* Extracts the profile picture key from the linden user profile
+*/
+function secondlife_extract_picture_key($profile_page) {
+  return secondlife_get_data_between($profile_page, '<img alt="profile image" src="http://secondlife.com/app/image/','/1" class="parcelimg" />');
+}
+/**
+* Extracts the user name from the linden user profile
+*/
+function secondlife_extract_username($profile_page) {
+  return secondlife_get_data_between($profile_page, '<title>','</title>');
+}

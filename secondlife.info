@@ -1,0 +1,5 @@
+; $Id: secondlife.info,v 1.4 2008/12/14 20:19:01 kbahey Exp $
+name = SecondLife Library
+description = SecondLife library integration
+package = SecondLife
+core = 6.x
