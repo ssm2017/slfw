@@ -5,6 +5,8 @@ Differences between this version and the official one :
 - allow to add a lot of allowed ips
 - allow the lsl script to choose the arguments separator instead of ":"
 - allow to use another xmlrpc host instead of the linden one
+- php 5.3 compatible
+- better proxy management
 ******************************************************************************
 
 Copyright 2007 Khalid Baheyeldin http://2bits.com

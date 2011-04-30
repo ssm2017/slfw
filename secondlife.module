@@ -127,8 +127,15 @@ function secondlife_request() {
   $ll_subnets = explode("\n", variable_get('secondlife_allowed_ips', SECONDLIFE_LINDEN_SERVERS) );
   $remote_addr = $_SERVER['REMOTE_ADDR'];
   if (variable_get('secondlife_use_proxy', 0)) {
-    $tempa = split(", ", $_SERVER['HTTP_X_FORWARDED_FOR']);
-    $remote_addr = trim($tempa[1]);
+    // TODO : need review
+    //$tempa = split(", ", $_SERVER['HTTP_X_FORWARDED_FOR']);
+    //$remote_addr = trim($tempa[1]);
+    if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+      $remote_addr = $_SERVER['HTTP_X_FORWARDED_FOR'];
+    }
+    elseif (isset($_SERVER['HTTP_X_REAL_IP']) {
+      $remote_addr = $_SERVER['HTTP_X_REAL_IP'];
+    }
   }
   foreach( $ll_subnets as $network) {
     if(secondlife_netmatch($network, $remote_addr)) {
@@ -166,7 +173,7 @@ function secondlife_request() {
   $dispatcher = $sl->app . '_dispatch';
   if ($sl->app && $sl->cmd && function_exists($dispatcher)) {
     $args = secondlife_parse_args($sl->arg, $args_separator);
-    module_invoke($sl->app, 'dispatch', $sl->cmd, $sl, $args);
+    module_invoke($sl->app, 'dispatch', $sl->cmd, &$sl, $args);
   }
   else {
     $sl->response['status'] = FALSE;
@@ -207,7 +214,7 @@ function secondlife_get_session() {
   $sl->arg          = $_POST[variable_get('secondlife_arg', 'arg')];
   $sl->output_type  = $_POST['output_type'];
   $sl->args_separator = $_POST['args_separator'];
-  
+
   preg_match_all('/(.*) \((\d+), (\d+)\)/', $sl->region, $temp);
   $sl->region_name = $temp[1][0];
   $sl->region_x    = $temp[2][0];
@@ -258,7 +265,7 @@ function secondlife_send_response(&$sl) {
       print strip_tags($sl->response['message']);
       break;
   }
-      
+
 }
 /**
  * Write the debug infos to the debug file.
