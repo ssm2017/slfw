@@ -133,7 +133,7 @@ function secondlife_request() {
     if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
       $remote_addr = $_SERVER['HTTP_X_FORWARDED_FOR'];
     }
-    elseif (isset($_SERVER['HTTP_X_REAL_IP']) {
+    elseif (isset($_SERVER['HTTP_X_REAL_IP'])) {
       $remote_addr = $_SERVER['HTTP_X_REAL_IP'];
     }
   }
