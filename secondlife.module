@@ -35,7 +35,7 @@ function secondlife_menu() {
   );
 
   $items['admin/config/secondlife/settings'] = array(
-    'title'              => 'Second Life',
+    'title'              => 'Settings',
     'description'        => 'Settings for the Second Life Framework module.',
     'page callback'      => 'drupal_get_form',
     'page arguments'     => array('secondlife_settings'),
@@ -270,7 +270,7 @@ function secondlife_send_response(&$sl) {
       print strip_tags($sl->response['message']);
       break;
   }
-      
+
 }
 /**
  * Write the debug infos to the debug file.
