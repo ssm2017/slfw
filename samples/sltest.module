@@ -11,7 +11,11 @@ function sltest_help($section) {
   }
 }
 
-function sltest_dispatch($cmd, $sl, $args) {
+function sltest_dispatch($params) {
+  $cmd = $params[0];
+  $sl = &$params[1];
+  $args = $params[2];
+
   switch($cmd) {
     case 'hello':
       $sl->response['message'] = "success;Hi there, $sl->ownername";
@@ -39,4 +43,5 @@ function sltest_dispatch($cmd, $sl, $args) {
       $sl->response['message'] = "Oops! Unknown command: $cmd.";
       break;
   }
+  return $sl;
 }
