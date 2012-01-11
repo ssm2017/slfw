@@ -1,0 +1,46 @@
+<?php
+// $Id: sltest.module,v 1.4.2.2 2008/12/16 03:37:52 kbahey Exp $
+
+/**
+ * Implementation of hook_help().
+ */
+function sltest_help($section) {
+  switch ($section) {
+    case 'admin/help#sltest':
+      return '<p>'. t('Second Life test') .'</p>';
+  }
+}
+
+function sltest_dispatch($params) {
+  $cmd = $params[0];
+  $sl = &$params[1];
+  $args = $params[2];
+
+  switch($cmd) {
+    case 'hello':
+      $sl->response['message'] = "success;Hi there, $sl->ownername";
+      $sl->response['status'] = TRUE;
+      break;
+
+    case 'datetime':
+      $date = format_date(time(), 'custom', 'Y-m-d G:i:s');
+      $sl->response['message'] = "success;Server date/time: $date";
+      $sl->response['status'] = TRUE;
+      break;
+
+    case 'dump':
+      $output = array();
+      foreach($args as $k => $v) {
+        array_push($output,"$k -> $v");
+      }
+
+      $sl->response['message'] = "success;ARGS: ".implode(" : ",$output);
+      $sl->response['status'] = TRUE;
+      break;
+
+    default:
+      $sl->response['status'] = FALSE;
+      $sl->response['message'] = "Oops! Unknown command: $cmd.";
+      break;
+  }
+}

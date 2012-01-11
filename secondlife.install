@@ -1,0 +1,11 @@
+<?php
+// $Id: secondlife.install,v 1.1 2008/12/16 03:25:20 kbahey Exp $
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function secondlife_uninstall() {
+  db_query("DELETE FROM {variable} WHERE name LIKE 'secondlife%%'");
+}
+
+
