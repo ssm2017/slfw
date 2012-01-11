@@ -43,5 +43,4 @@ function sltest_dispatch($params) {
       $sl->response['message'] = "Oops! Unknown command: $cmd.";
       break;
   }
-  return $sl;
 }
