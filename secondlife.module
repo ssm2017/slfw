@@ -177,7 +177,7 @@ function secondlife_request() {
   if ($sl->app && $sl->cmd && function_exists($dispatcher)) {
     $args = secondlife_parse_args($sl->arg, $args_separator);
     // workaround adding reference to an array to be able to pass reference to module_invoke (for php > 5.2)
-    $params = array($sl->cmd, &$sl, $args);
+    $params = array('cmd'=> $sl->cmd, 'sl'=> &$sl, 'args'=> $args);
     module_invoke($sl->app, 'dispatch', $params);
   }
   else {
